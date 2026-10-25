@@ -197,7 +197,7 @@ h2{font-family:var(--display);font-weight:400;font-size:clamp(24px,4vw,36px);mar
     <button class="big alt" id="pauseSound">Звук: вкл</button>
     <button class="big alt" id="pauseExit">Выйти в меню</button>
   </div>
-  <p class="note">Управление: на экране палец двигает героя. На клавиатуре: игрок 1 — WASD и 1–4, игрок 2 — стрелки и 7–0.</p>
+  <p class="note">Управление: на экране палец двигает героя. Подойди к постройке: зелёная стрелка прокачивает её, красный крестик убирает (нажми два раза, вернётся половина монеток). На клавиатуре: игрок 1 — WASD, стройка 1–4, прокачка 5, убрать 6; игрок 2 — стрелки, 7–0, прокачка «−», убрать «=».</p>
 </section>
 
 <section class="layer dim" id="scrLose" hidden>
@@ -234,6 +234,15 @@ const BUILD = {
   tower:{n:"Башня",cost:30,hp:120,desc:"стреляет сама"}
 };
 const BKEYS = ["lamp","wall","house","tower"];
+const LV_MAX = 3;
+const HP_MUL = { lamp:[0,1,1.5,2], wall:[0,1,2,3], house:[0,1,1.5,2], tower:[0,1,1.5,2.2] };
+const HALL_LV = [null, {max:400,dmg:9,cd:1,rng:175,cost:0}, {max:600,dmg:15,cd:.8,rng:200,cost:60}, {max:850,dmg:24,cd:.6,rng:230,cost:120}];
+const LAMP_LV = [null, {r:125,burn:3,slow:.5,light:140}, {r:160,burn:6,slow:.4,light:180}, {r:200,burn:10,slow:.25,light:225}];
+const TOWER_LV = [null, {dmg:13,cd:.85,rng:200}, {dmg:20,cd:.65,rng:220}, {dmg:30,cd:.55,rng:240}];
+const HOUSE_COINS = [0,3,6,10];
+const lv = s => s.lv || 1;
+const maxHp = s => Math.round(BUILD[s.t].hp * HP_MUL[s.t][lv(s)]);
+const upCost = s => BUILD[s.t].cost * (lv(s) === 1 ? 2 : 4);
 const UPG = {
   spd:{n:"Быстрые кроссовки",d:"Бегаешь быстрее",base:15},
   dmg:{n:"Мощный фонарик",d:"Луч бьёт сильнее",base:20},
@@ -441,45 +450,78 @@ function drawMini(canvas, prof){
   const c = canvas.getContext("2d"); c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,canvas.width,canvas.height);
   const s = canvas.height/66; drawHero(c, canvas.width/2, canvas.height-4, prof, 0, 1, s);
 }
-function drawBuilding(c, t, x, y, hp, max, lit){
+function drawBuilding(c, t, x, y, hp, max, lit, lv=1){
   c.save(); c.translate(x,y);
   c.fillStyle = "rgba(0,0,0,.3)"; c.beginPath(); c.ellipse(0,10,30,9,0,0,7); c.fill();
+  let top = -60;
   if (t === "house"){
-    c.fillStyle = "#cdb89a"; c.fillRect(-24,-28,48,38);
-    c.fillStyle = "#8d3a3f"; c.beginPath(); c.moveTo(-30,-26); c.lineTo(0,-52); c.lineTo(30,-26); c.closePath(); c.fill();
+    const up = lv >= 2 ? 22 : 0;
+    c.fillStyle = "#cdb89a"; c.fillRect(-24,-28-up,48,38+up);
+    if (up){ c.fillStyle = "rgba(0,0,0,.12)"; c.fillRect(-24,-31,48,3); }
+    if (lv >= 3){ c.fillStyle = "#6b4a3a"; c.fillRect(12,-58-up,8,18); }
+    c.fillStyle = lv >= 3 ? "#d9a520" : "#8d3a3f"; c.beginPath(); c.moveTo(-30,-26-up); c.lineTo(0,-52-up); c.lineTo(30,-26-up); c.closePath(); c.fill();
     c.fillStyle = "#5a3826"; c.fillRect(-6,-6,12,16);
     c.fillStyle = lit ? "#ffd56b" : "#41506e"; c.fillRect(-19,-20,10,10); c.fillRect(9,-20,10,10);
+    if (up){ c.fillRect(-19,-44,10,10); c.fillRect(9,-44,10,10); }
+    top = -62 - up;
   } else if (t === "lamp"){
-    c.fillStyle = "#2c3150"; c.fillRect(-3,-46,6,54);
-    c.fillStyle = "#454b72"; c.fillRect(-9,-54,18,10);
-    c.fillStyle = lit ? "#ffe39a" : "#c9b780"; c.beginPath(); c.arc(0,-44,6,0,7); c.fill();
+    const h = lv >= 3 ? 64 : 54;
+    c.fillStyle = "#2c3150"; c.fillRect(-3,-h+8,6,h);
+    if (lv >= 2) c.fillRect(-16,-h+8,32,4);
+    for (const hx of (lv >= 2 ? [-14,14] : [0])){
+      c.fillStyle = "#454b72"; c.fillRect(hx-9,-h,18,10);
+      c.fillStyle = lv >= 3 ? "#bdf3ff" : lit ? "#ffe39a" : "#c9b780"; c.beginPath(); c.arc(hx,-h+10,6,0,7); c.fill();
+    }
+    top = -h - 8;
   } else if (t === "tower"){
-    c.fillStyle = "#6c6f8f"; c.fillRect(-16,-46,32,56);
-    c.fillStyle = "#585b7a"; for (let i=0;i<4;i++) c.fillRect(-16+i*9,-54,6,10);
-    c.fillStyle = "#4a4d6a"; c.fillRect(-16,-20,32,3); c.fillRect(-16,-4,32,3);
-    c.fillStyle = "#7fe7ff"; c.beginPath(); c.moveTo(0,-74); c.lineTo(7,-60); c.lineTo(0,-50); c.lineTo(-7,-60); c.closePath(); c.fill();
+    const e = lv >= 2 ? 14 : 0;
+    c.fillStyle = "#6c6f8f"; c.fillRect(-16,-46-e,32,56+e);
+    c.fillStyle = "#585b7a"; for (let i=0;i<4;i++) c.fillRect(-16+i*9,-54-e,6,10);
+    c.fillStyle = "#4a4d6a"; c.fillRect(-16,-20,32,3); c.fillRect(-16,-4,32,3); if (e) c.fillRect(-16,-36,32,3);
+    c.fillStyle = lv >= 3 ? "#c59bff" : "#7fe7ff";
+    for (const cx of (lv >= 3 ? [-8,8] : [0])){ c.beginPath(); c.moveTo(cx,-74-e); c.lineTo(cx+7,-60-e); c.lineTo(cx,-50-e); c.lineTo(cx-7,-60-e); c.closePath(); c.fill(); }
+    top = -84 - e;
   } else if (t === "wall"){
-    c.fillStyle = "#7a5a3a";
+    c.fillStyle = lv >= 2 ? "#7d8199" : "#7a5a3a";
     for (let i=-2;i<=2;i++){ c.save(); c.translate(i*10,0); c.rotate(i*.06); c.fillRect(-4,-30,8,40); c.restore(); }
-    c.fillStyle = "#5d4329"; c.fillRect(-28,-22,56,7); c.fillRect(-28,-4,56,7);
+    c.fillStyle = lv >= 2 ? "#5b5f78" : "#5d4329"; c.fillRect(-28,-22,56,7); c.fillRect(-28,-4,56,7);
+    if (lv >= 3){ c.fillStyle = "#d8dbe8"; for (let i=-2;i<=2;i++){ c.beginPath(); c.moveTo(i*10-4,-30); c.lineTo(i*10,-42); c.lineTo(i*10+4,-30); c.fill(); } }
+    top = lv >= 3 ? -52 : -44;
   }
-  if (hp < max) hpBar(c, 0, t==="tower"?-82:-60, 44, hp/max);
+  if (hp < max) hpBar(c, 0, top, 44, hp/max);
+  if (lv > 1) stars(c, 0, top - 9, lv);
   c.restore();
 }
-function drawHall(c, hp, lit){
+function stars(c, x, y, n){
+  c.fillStyle = "#ffd23f"; c.strokeStyle = "rgba(0,0,0,.6)"; c.lineWidth = 1;
+  for (let i=0;i<n;i++){
+    const sx = x + (i-(n-1)/2)*13;
+    c.beginPath();
+    for (let k=0;k<10;k++){ const r = k%2 ? 2.4 : 5.5, a = -Math.PI/2 + k*Math.PI/5; c.lineTo(sx+Math.cos(a)*r, y+Math.sin(a)*r); }
+    c.closePath(); c.fill(); c.stroke();
+  }
+}
+function drawHall(c, hp, lit, lv=1){
   c.save(); c.translate(HALL.x, HALL.y);
-  c.fillStyle = "rgba(0,0,0,.35)"; c.beginPath(); c.ellipse(0,32,70,16,0,0,7); c.fill();
+  c.fillStyle = "rgba(0,0,0,.35)"; c.beginPath(); c.ellipse(0,32,lv >= 3 ? 92 : 70,16,0,0,7); c.fill();
+  if (lv >= 3){
+    c.fillStyle = "#cfc8b8"; c.fillRect(-84,-6,26,38); c.fillRect(58,-6,26,38);
+    c.fillStyle = "#6e3f4a"; c.fillRect(-88,-12,34,8); c.fillRect(54,-12,34,8);
+    c.fillStyle = lit ? "#ffd56b" : "#41506e"; c.fillRect(-76,4,10,10); c.fillRect(66,4,10,10);
+  }
   c.fillStyle = "#d8d2c4"; c.fillRect(-58,-26,116,58);
   c.fillStyle = "#b9b2a2"; for (let i=-4;i<=4;i++) c.fillRect(i*13-3,-20,6,50);
   c.fillStyle = "#6e3f4a"; c.beginPath(); c.moveTo(-66,-24); c.lineTo(0,-54); c.lineTo(66,-24); c.closePath(); c.fill();
   c.fillStyle = "#cfc8b8"; c.fillRect(-16,-96,32,46);
   c.fillStyle = "#6e3f4a"; c.beginPath(); c.moveTo(-20,-94); c.lineTo(0,-120); c.lineTo(20,-94); c.closePath(); c.fill();
+  if (lv >= 2){ c.fillStyle = "#ffd23f"; c.beginPath(); c.arc(0,-76,14,0,7); c.fill(); }
   c.fillStyle = lit ? "#ffe9a8" : "#f4f1e6"; c.beginPath(); c.arc(0,-76,11,0,7); c.fill();
   c.strokeStyle = "#333"; c.lineWidth = 2; c.beginPath(); c.moveTo(0,-76); c.lineTo(0,-84); c.moveTo(0,-76); c.lineTo(6,-74); c.stroke();
   c.fillStyle = "#4a3326"; c.fillRect(-10,6,20,26);
   c.strokeStyle = "#cfc8b8"; c.lineWidth = 2; c.beginPath(); c.moveTo(0,-120); c.lineTo(0,-140); c.stroke();
-  c.fillStyle = "#e63946"; c.beginPath(); c.moveTo(0,-140); c.lineTo(18,-134); c.lineTo(0,-128); c.fill();
-  hpBar(c, 0, -150, 90, hp/HALL.max);
+  c.fillStyle = lv >= 3 ? "#ffd23f" : "#e63946"; c.beginPath(); c.moveTo(0,-140); c.lineTo(18,-134); c.lineTo(0,-128); c.fill();
+  hpBar(c, 0, -150, 90, hp/HALL_LV[lv].max);
+  if (lv > 1) stars(c, 0, -160, lv);
   c.restore();
 }
 function hpBar(c, x, y, w, f){
@@ -546,7 +588,7 @@ const touches = new Map();
 
 function makePlayer(prof, i){
   const maxHp = 100 + prof.upg.hp*25;
-  return { prof, i, x: HALL.x + (i? 70 : -70), y: HALL.y + 95, hp:maxHp, maxHp, dead:0, cd:0, face: i? -1 : 1, walk:0, menu:-1, flash:0, moving:false };
+  return { prof, i, x: HALL.x + (i? 70 : -70), y: HALL.y + 95, hp:maxHp, maxHp, dead:0, cd:0, face: i? -1 : 1, walk:0, menu:-1, up:null, flash:0, moving:false };
 }
 function startGame(mode, p1, p2){
   const P1 = store.profiles[p1];
@@ -570,8 +612,8 @@ function beginDay(first){
   G.phase = "day"; G.t = DAY_LEN; G.boss = null; $("bossbar").hidden = true;
   droneOff();
   if (!first){
-    G.city.hallHp = Math.min(HALL.max, G.city.hallHp + HALL.max*.5);
-    G.city.slots.forEach((s,i) => { if (s && s.t === "house") for (let k=0;k<3;k++) G.coins.push({ x:SLOTS[i][0]+rand(-40,40), y:SLOTS[i][1]+rand(15,45), v:2 }); });
+    G.city.hallHp = Math.min(hallMax(), G.city.hallHp + hallMax()*.5);
+    G.city.slots.forEach((s,i) => { if (s && s.t === "house") for (let k=0;k<HOUSE_COINS[lv(s)];k++) G.coins.push({ x:SLOTS[i][0]+rand(-40,40), y:SLOTS[i][1]+rand(15,45), v:2 }); });
   }
   banner(first ? "День " + G.city.night : "Рассвет!", first ? "Строй город, пока светло" : "Ночь " + (G.city.night-1) + " пережита. Дома принесли монетки");
 }
@@ -639,6 +681,48 @@ function slotMenuIcons(i){
   const [sx, sy] = SLOTS[i];
   return BKEYS.map((k, j) => ({ k, x: sx + (j-1.5)*54, y: sy - 78 + Math.abs(j-1.5)*10 }));
 }
+function hallLv(){ return G.city.hallLv || 1; }
+function hallMax(){ return HALL_LV[hallLv()].max; }
+function upIconPos(p){
+  if (p.up === "hall") return { x:HALL.x, y:HALL.y - 198 };
+  const s = G.city.slots[p.up], [x, y] = SLOTS[p.up];
+  return { x, y: y - (s.t === "tower" ? 122 : s.t === "house" && lv(s) >= 2 ? 112 : 96) };
+}
+function upCostFor(p){ return p.up === "hall" ? HALL_LV[hallLv()+1].cost : upCost(G.city.slots[p.up]); }
+function selIcons(p){
+  const b = upIconPos(p);
+  if (p.up === "hall") return [{ kind:"up", x:b.x, y:b.y }];
+  const s = G.city.slots[p.up], canUp = lv(s) < LV_MAX, out = [];
+  if (canUp) out.push({ kind:"up", x:b.x-30, y:b.y });
+  out.push({ kind:"del", x: canUp ? b.x+30 : b.x, y:b.y });
+  return out;
+}
+function refund(s){ const c = BUILD[s.t].cost; return Math.floor((c + (lv(s) >= 2 ? c*2 : 0) + (lv(s) >= 3 ? c*4 : 0)) / 2); }
+function tryRemove(p){
+  const i = p.up; if (i === null || i === "hall") return;
+  const s = G.city.slots[i];
+  if (p.delArm !== i || G.time > p.delT){ p.delArm = i; p.delT = G.time + 2.5; SFX.click(); return; }
+  const back = refund(s), [x, y] = SLOTS[i];
+  p.prof.coins += back; G.city.slots[i] = null; p.delArm = null;
+  burst(x, y-10, "#cdb89a", 16); SFX.boom();
+  floatText(x, y-60, BUILD[s.t].n + " убран  +" + back, "#ffc857");
+  saveAll();
+}
+function tryUpgrade(p){
+  if (p.up === null || (p.up !== "hall" && lv(G.city.slots[p.up]) >= LV_MAX)) return;
+  const cost = upCostFor(p);
+  if (p.prof.coins < cost){ floatText(p.x, p.y-70, "Нужно " + cost + " монет", "#ff8fa3"); SFX.hurt(); return; }
+  p.prof.coins -= cost;
+  if (p.up === "hall"){
+    G.city.hallLv = hallLv() + 1; G.city.hallHp = hallMax();
+    burst(HALL.x, HALL.y-40, "#ffd23f", 30); floatText(HALL.x, HALL.y-120, "Ратуша: уровень " + G.city.hallLv, "#fff");
+  } else {
+    const s = G.city.slots[p.up], [x, y] = SLOTS[p.up];
+    s.lv = lv(s) + 1; s.hp = maxHp(s);
+    burst(x, y-20, "#ffd23f", 20); floatText(x, y-70, BUILD[s.t].n + ": уровень " + s.lv, "#fff");
+  }
+  SFX.buy(); SFX.build(); saveAll();
+}
 function tryBuild(p, i, k){
   const B = BUILD[k];
   if (G.city.slots[i]) return;
@@ -663,10 +747,10 @@ function inputFor(p){
   const l = Math.hypot(ix,iy); if (l > 1){ ix /= l; iy /= l; }
   return [ix, iy];
 }
-function lampAt(x, y){
-  const s = G.city.slots;
-  for (let i=0;i<s.length;i++) if (s[i] && s[i].t === "lamp" && dist(x,y,SLOTS[i][0],SLOTS[i][1]) < 125) return true;
-  return false;
+function lampLevel(x, y){
+  const s = G.city.slots; let best = 0;
+  for (let i=0;i<s.length;i++) if (s[i] && s[i].t === "lamp" && lv(s[i]) > best && dist(x,y,SLOTS[i][0],SLOTS[i][1]) < LAMP_LV[lv(s[i])].r) best = lv(s[i]);
+  return best;
 }
 function damageMonster(m, d, by){
   m.hp -= d; m.flash = .12;
@@ -694,6 +778,11 @@ function update(dt){
     G.t -= dt;
     G.coinT -= dt;
     if (G.coinT <= 0 && G.coins.length < 22){ G.coinT = .75; G.coins.push({ x:rand(110,W-110), y:rand(110,H-110), v: Math.random()<.1 ? 5 : 1 }); }
+    G.houseT = (G.houseT ?? 8) - dt;
+    if (G.houseT <= 0){
+      G.houseT = 8;
+      slots.forEach((s,i) => { if (s && s.t === "house" && lv(s) >= 3) G.coins.push({ x:SLOTS[i][0]+rand(-35,35), y:SLOTS[i][1]+rand(15,40), v:1 }); });
+    }
     if (G.t <= 0) beginNight();
   } else {
     G.t += dt;
@@ -708,6 +797,7 @@ function update(dt){
   for (const p of G.players){
     p.flash = Math.max(0, p.flash - dt*3);
     if (p.dead > 0){
+      p.menu = -1; p.up = null;
       p.dead -= dt;
       if (p.dead <= 0){ p.hp = p.maxHp; p.x = HALL.x + (p.i?70:-70); p.y = HALL.y + 95; floatText(p.x, p.y-70, "Снова в бою!", "#45d69e"); }
       continue;
@@ -733,10 +823,10 @@ function update(dt){
     // repair
     for (let i=0;i<slots.length;i++){
       const s = slots[i]; if (!s) continue;
-      const max = BUILD[s.t].hp;
+      const max = maxHp(s);
       if (s.hp < max && dist(p.x,p.y,SLOTS[i][0],SLOTS[i][1]) < 62){ s.hp = Math.min(max, s.hp + 22*dt); if (Math.random() < dt*6) burst(SLOTS[i][0]+rand(-15,15), SLOTS[i][1]-20, "#45d69e", 1); }
     }
-    if (G.city.hallHp < HALL.max && dist(p.x,p.y,HALL.x,HALL.y) < 110){ G.city.hallHp = Math.min(HALL.max, G.city.hallHp + 9*dt); }
+    if (G.city.hallHp < hallMax() && dist(p.x,p.y,HALL.x,HALL.y) < 110){ G.city.hallHp = Math.min(hallMax(), G.city.hallHp + 9*dt); }
     // build menu
     p.menu = -1;
     for (let i=0;i<SLOTS.length;i++){
@@ -745,6 +835,18 @@ function update(dt){
         if (!other) p.menu = i;
         break;
       }
+    }
+    // upgrade button for the nearest built thing
+    p.up = null;
+    if (p.menu < 0){
+      let ud = 52;
+      for (let i=0;i<slots.length;i++){
+        const s = slots[i]; if (!s) continue;
+        const d = dist(p.x,p.y,SLOTS[i][0],SLOTS[i][1]);
+        if (d < ud){ ud = d; p.up = i; }
+      }
+      if (p.up === null && hallLv() < LV_MAX && dist(p.x,p.y,HALL.x,HALL.y) < 105) p.up = "hall";
+      if (p.up !== null && G.players.some(o => o !== p && o.up === p.up)) p.up = null;
     }
     // coins
     for (let k=G.coins.length-1;k>=0;k--){
@@ -772,8 +874,8 @@ function update(dt){
       if (d < 210 && d < bd + 60){ bd = d; tx = p.x; ty = p.y; tr = 14; target = { kind:"player", p }; }
     }
     const d = dist(m.x,m.y,tx,ty);
-    const slow = lampAt(m.x, m.y) ? .5 : 1;
-    if (slow < 1){ m.hp -= 3*dt; if (m.hp <= 0) damageMonster(m, 0, null); }
+    const L = lampLevel(m.x, m.y), slow = L ? LAMP_LV[L].slow : 1;
+    if (L){ m.hp -= LAMP_LV[L].burn*dt; if (m.hp <= 0) damageMonster(m, 0, null); }
     if (d > m.r + tr){
       m.x += (tx-m.x)/d * m.spd * slow * dt; m.y += (ty-m.y)/d * m.spd * slow * dt;
     } else {
@@ -781,6 +883,7 @@ function update(dt){
       if (target.kind === "hall"){ G.city.hallHp -= dmg; if (G.city.hallHp <= 0){ G.city.hallHp = 0; lose(); return; } }
       else if (target.kind === "slot"){
         const s = slots[target.i]; s.hp -= dmg;
+        if (s.t === "wall" && lv(s) >= 3) damageMonster(m, 8*dt, null);
         if (s.hp <= 0){ slots[target.i] = null; burst(tx, ty, "#cdb89a", 18); SFX.boom(); floatText(tx, ty-50, BUILD[s.t].n + " сломан", "#ff8fa3"); }
       } else {
         const p = target.p; p.hp -= dmg; p.flash = .6;
@@ -806,16 +909,21 @@ function update(dt){
     const s = slots[i]; if (!s || s.t !== "tower") continue;
     G.tcd[i] = (G.tcd[i] || 0) - dt;
     if (G.tcd[i] > 0) continue;
-    let best = null, bd = 200;
-    for (const m of G.monsters){ const d = dist(SLOTS[i][0], SLOTS[i][1]-60, m.x, m.y-m.r); if (d < bd){ bd = d; best = m; } }
-    if (best){ G.tcd[i] = .85; damageMonster(best, 13, null); G.beams.push({ x1:SLOTS[i][0], y1:SLOTS[i][1]-66, x2:best.x, y2:best.y-best.r, t:.15, col:"#7fe7ff" }); }
+    const T = TOWER_LV[lv(s)], tx = SLOTS[i][0], ty = SLOTS[i][1] - 60;
+    const targets = G.monsters.filter(m => !m.dead).map(m => ({ m, d: dist(tx, ty, m.x, m.y-m.r) }))
+      .filter(o => o.d < T.rng).sort((a,b) => a.d - b.d).slice(0, lv(s) >= 3 ? 2 : 1);
+    if (targets.length){
+      G.tcd[i] = T.cd;
+      for (const { m } of targets){ damageMonster(m, T.dmg, null); G.beams.push({ x1:tx, y1:ty-6, x2:m.x, y2:m.y-m.r, t:.15, col: lv(s) >= 3 ? "#c59bff" : "#7fe7ff" }); }
+    }
   }
   // the town hall bell-tower shoots slowly on its own
   G.hallCd = (G.hallCd || 0) - dt;
   if (G.hallCd <= 0){
-    let best = null, bd = 175;
-    for (const m of G.monsters){ const d = dist(HALL.x, HALL.y, m.x, m.y); if (d < bd + m.r){ bd = d; best = m; } }
-    if (best){ G.hallCd = 1; damageMonster(best, 9, null); G.beams.push({ x1:HALL.x, y1:HALL.y-80, x2:best.x, y2:best.y-best.r, t:.15, col:"#ffe9a8" }); }
+    const HL = HALL_LV[hallLv()];
+    let best = null, bd = HL.rng;
+    for (const m of G.monsters){ if (m.dead) continue; const d = dist(HALL.x, HALL.y, m.x, m.y); if (d < bd + m.r){ bd = d; best = m; } }
+    if (best){ G.hallCd = HL.cd; damageMonster(best, HL.dmg, null); G.beams.push({ x1:HALL.x, y1:HALL.y-80, x2:best.x, y2:best.y-best.r, t:.15, col:"#ffe9a8" }); }
   }
   G.monsters = G.monsters.filter(m => !m.dead);
 
@@ -851,9 +959,9 @@ function render(){
   // y-sorted objects
   const objs = [];
   for (const tr of TREES) objs.push({ y:tr[1], d:()=>drawTree(ctx, tr[0], tr[1]) });
-  objs.push({ y:HALL.y+30, d:()=>drawHall(ctx, G ? G.city.hallHp : HALL.max, nightF > .3) });
+  objs.push({ y:HALL.y+30, d:()=>drawHall(ctx, G ? G.city.hallHp : HALL.max, nightF > .3, G ? hallLv() : 1) });
   if (G){
-    slots.forEach((s,i) => { if (s) objs.push({ y:SLOTS[i][1]+10, d:()=>drawBuilding(ctx, s.t, SLOTS[i][0], SLOTS[i][1], s.hp, BUILD[s.t].hp, nightF > .3) }); });
+    slots.forEach((s,i) => { if (s) objs.push({ y:SLOTS[i][1]+10, d:()=>drawBuilding(ctx, s.t, SLOTS[i][0], SLOTS[i][1], s.hp, maxHp(s), nightF > .3, lv(s)) }); });
     for (const m of G.monsters) objs.push({ y:m.y, d:()=>drawMonster(ctx, m, t) });
     for (const p of G.players) if (p.dead <= 0) objs.push({ y:p.y, d:()=>{
       drawHero(ctx, p.x, p.y, p.prof, p.walk, p.face, 1, p.flash*.6);
@@ -888,7 +996,7 @@ function render(){
     const lights = [[HALL.x, HALL.y-20, 150]];
     if (G){
       for (const p of G.players) if (p.dead <= 0) lights.push([p.x, p.y-25, 120 + p.prof.upg.rng*14]);
-      slots.forEach((s,i) => { if (!s) return; if (s.t === "lamp") lights.push([SLOTS[i][0], SLOTS[i][1]-30, 140]); else if (s.t === "tower") lights.push([SLOTS[i][0], SLOTS[i][1]-50, 70]); else if (s.t === "house") lights.push([SLOTS[i][0], SLOTS[i][1]-10, 55]); });
+      slots.forEach((s,i) => { if (!s) return; if (s.t === "lamp") lights.push([SLOTS[i][0], SLOTS[i][1]-30, LAMP_LV[lv(s)].light]); else if (s.t === "tower") lights.push([SLOTS[i][0], SLOTS[i][1]-50, 70]); else if (s.t === "house") lights.push([SLOTS[i][0], SLOTS[i][1]-10, 55]); });
       for (const b of G.beams) lights.push([b.x2, b.y2, 40]);
     } else {
       lights.push([640 + Math.cos(t*.5)*380, 360 + Math.sin(t*.7)*200, 130]);
@@ -931,6 +1039,34 @@ function render(){
         ctx.font = "900 12px Nunito, sans-serif"; ctx.textAlign = "center";
         ctx.fillStyle = "rgba(16,20,46,.92)"; rr(ctx, ic.x-17, ic.y+18, 34, 16, 8); ctx.fill();
         ctx.fillStyle = ok ? "#ffc857" : "#ff8fa3"; ctx.fillText(B.cost, ic.x, ic.y+30);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // upgrade / remove buttons
+    for (const p of G.players){
+      if (p.up === null || p.dead > 0) continue;
+      for (const ic of selIcons(p)){
+        const up = ic.kind === "up";
+        const armed = !up && p.delArm === p.up && G.time <= p.delT;
+        const cost = up ? upCostFor(p) : 0, ok = !up || p.prof.coins >= cost;
+        ctx.globalAlpha = ok ? 1 : .55;
+        ctx.fillStyle = armed ? "rgba(120,20,40,.95)" : "rgba(16,20,46,.92)";
+        ctx.strokeStyle = up ? "#45d69e" : "#ff4d6d"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(ic.x, ic.y, 24, 0, 7); ctx.fill(); ctx.stroke();
+        if (up){
+          ctx.fillStyle = "#45d69e";
+          ctx.beginPath(); ctx.moveTo(ic.x, ic.y-14); ctx.lineTo(ic.x+11, ic.y); ctx.lineTo(ic.x+4, ic.y); ctx.lineTo(ic.x+4, ic.y+11);
+          ctx.lineTo(ic.x-4, ic.y+11); ctx.lineTo(ic.x-4, ic.y); ctx.lineTo(ic.x-11, ic.y); ctx.closePath(); ctx.fill();
+        } else {
+          ctx.strokeStyle = "#ff8fa3"; ctx.lineWidth = 4; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(ic.x-8, ic.y-8); ctx.lineTo(ic.x+8, ic.y+8); ctx.moveTo(ic.x+8, ic.y-8); ctx.lineTo(ic.x-8, ic.y+8); ctx.stroke();
+          ctx.lineCap = "butt";
+        }
+        const label = up ? String(cost) : armed ? "Точно?" : "+" + refund(G.city.slots[p.up]);
+        ctx.font = "900 12px Nunito, sans-serif"; ctx.textAlign = "center";
+        const lw = Math.max(34, ctx.measureText(label).width + 12);
+        ctx.fillStyle = "rgba(16,20,46,.92)"; rr(ctx, ic.x-lw/2, ic.y+18, lw, 16, 8); ctx.fill();
+        ctx.fillStyle = up ? (ok ? "#ffc857" : "#ff8fa3") : armed ? "#ff8fa3" : "#ffc857"; ctx.fillText(label, ic.x, ic.y+30);
         ctx.globalAlpha = 1;
       }
     }
@@ -990,6 +1126,10 @@ cv.addEventListener("pointerdown", e => {
     if (p.menu < 0 || p.dead > 0) continue;
     for (const ic of slotMenuIcons(p.menu)) if (dist(wx, wy, ic.x, ic.y) < 30){ tryBuild(p, p.menu, ic.k); return; }
   }
+  for (const p of G.players){
+    if (p.up === null || p.dead > 0) continue;
+    for (const ic of selIcons(p)) if (dist(wx, wy, ic.x, ic.y) < 28){ if (ic.kind === "up") tryUpgrade(p); else tryRemove(p); return; }
+  }
   const pid = G.mode === 1 ? 0 : (e.clientX < SW/2 ? 0 : 1);
   for (const [id, t] of touches) if (t.pid === pid) touches.delete(id);
   touches.set(e.pointerId, { pid, sx:e.clientX, sy:e.clientY, x:e.clientX, y:e.clientY });
@@ -1007,6 +1147,10 @@ addEventListener("keydown", e => {
   const p0 = G.players[0], p1 = G.players[1];
   if (e.code in map0 && p0.menu >= 0) tryBuild(p0, p0.menu, BKEYS[map0[e.code]]);
   if (e.code in map1){ const p = p1 || p0; if (p.menu >= 0) tryBuild(p, p.menu, BKEYS[map1[e.code]]); }
+  if (e.code === "Digit5") tryUpgrade(p0);
+  if (e.code === "Digit6") tryRemove(p0);
+  if (e.code === "Minus") tryUpgrade(p1 || p0);
+  if (e.code === "Equal") tryRemove(p1 || p0);
   if (e.code === "Escape") pause();
 });
 addEventListener("keyup", e => { keys[e.code] = false; });
